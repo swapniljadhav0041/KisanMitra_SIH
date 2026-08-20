@@ -1,14 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 from ..database import get_db
 from ..models.auction import Auction, Bid
 from ..models.user import User
+from ..models.product import Product, ProductMedia   # <-- added
 from ..schemas.auction import AuctionOut, BidCreate, BidOut
+from ..schemas.product import ProductPublicOut      # <-- added
 from ..core.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/api/auctions", tags=["auctions"])
+
+class TraderBidOut(BaseModel):
+    id: int
+    auction_id: int
+    bidder_id: int
+    bid_amount: float
+    bid_time: datetime
+    is_winning: bool
+    auction: AuctionOut
+
+    class Config:
+        from_attributes = True
+
+@router.get("/my-bids", response_model=List[TraderBidOut])
+def get_my_bids(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("trader"))
+):
+    bids = db.query(Bid).filter(Bid.bidder_id == current_user.id).order_by(Bid.bid_time.desc()).all()
+    return bids
 
 @router.get("/live", response_model=List[AuctionOut])
 def get_live_auctions(
@@ -16,11 +39,19 @@ def get_live_auctions(
     current_user: User = Depends(get_current_user)
 ):
     now = datetime.utcnow()
-    auctions = db.query(Auction).filter(
-        Auction.status == "live",
-        Auction.start_time <= now,
-        Auction.end_time > now
-    ).all()
+    auctions = (
+        db.query(Auction)
+        .options(
+            joinedload(Auction.product).joinedload(Product.media),
+            joinedload(Auction.product).joinedload(Product.category),
+        )
+        .filter(
+            Auction.status == "live",
+            Auction.start_time <= now,
+            Auction.end_time > now
+        )
+        .all()
+    )
     return auctions
 
 @router.post("/{auction_id}/bid", response_model=BidOut)
@@ -43,11 +74,9 @@ def place_bid(
     if bid_data.bid_amount < auction.base_price:
         raise HTTPException(status_code=400, detail="Bid must be at least base price")
     
-    # Check minimum increment
     if auction.current_highest_bid is not None and bid_data.bid_amount < auction.current_highest_bid + auction.min_bid_increment:
         raise HTTPException(status_code=400, detail=f"Bid must be at least {auction.min_bid_increment} more than current bid")
     
-    # Check if auto-extension applies
     if auction.auto_extension_enabled and auction.end_time - now <= timedelta(minutes=2):
         auction.end_time = now + timedelta(minutes=5)
     
@@ -63,7 +92,6 @@ def place_bid(
     db.commit()
     db.refresh(bid)
     
-    # Mark winning flag on this bid
     db.query(Bid).filter(Bid.auction_id == auction_id).update({"is_winning": False})
     bid.is_winning = True
     db.commit()

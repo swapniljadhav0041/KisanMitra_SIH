@@ -24,6 +24,11 @@ class AgentCreate(BaseModel):
     password: str
     service_area: Optional[str] = None
     commission_rate: float = 0.0
+    qualifications: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_holder: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
 
 class AdminCreate(BaseModel):
     name: str

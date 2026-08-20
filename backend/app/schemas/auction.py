@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from .product import ProductPublicOut
 
 class AuctionCreate(BaseModel):
     product_id: int
@@ -24,6 +25,7 @@ class AuctionOut(BaseModel):
     status: str
     min_bid_increment: float
     auto_extension_enabled: bool
+    product: ProductPublicOut  # <-- added
 
     class Config:
         from_attributes = True

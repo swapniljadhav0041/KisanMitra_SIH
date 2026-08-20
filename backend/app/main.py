@@ -6,11 +6,16 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import engine, Base, SessionLocal
 from .config import settings
-from .api import auth, products, auctions, orders, payments, agent, uploads, ws_auctions
+from .api import auth, products, auctions, orders, payments, agent, uploads, ws_auctions, admin_dashboard, admin_users, admin_listings, admin_revenue, admin_auctions, admin_products
 from .models.auction import Auction, Bid
 from .models.order import Order
 from .api import otp
 from .api import farmer
+from .api import categories
+from .api import trader
+from .models.settings import PlatformSetting
+from .api import admin_analysis, admin_settings
+from .api import farmer_orders
 
 # Create database tables if they don't exist
 Base.metadata.create_all(bind=engine)
@@ -20,7 +25,7 @@ app = FastAPI(title=settings.PROJECT_NAME)
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,21 +45,25 @@ app.include_router(farmer.router)
 app.include_router(otp.router)
 app.include_router(uploads.router)
 app.include_router(ws_auctions.router)
+app.include_router(categories.router)
+app.include_router(trader.router)
+app.include_router(admin_dashboard.router)   # <-- ensure this is here
+app.include_router(admin_users.router)
+app.include_router(admin_listings.router)
+app.include_router(admin_revenue.router)
+app.include_router(admin_auctions.router)
+app.include_router(admin_analysis.router)
+app.include_router(admin_settings.router)
+app.include_router(farmer_orders.router)
+app.include_router(admin_products.router)
 
 async def auction_scheduler():
-    """
-    Background task that periodically:
-    - Starts scheduled auctions whose start_time has passed.
-    - Ends live auctions whose end_time has passed.
-    - Marks winning bid and creates order automatically.
-    """
     while True:
-        await asyncio.sleep(10)  # Check every 10 seconds
+        await asyncio.sleep(10)
         db = SessionLocal()
         try:
             now = datetime.utcnow()
 
-            # 1. Start scheduled auctions
             scheduled_auctions = db.query(Auction).filter(
                 Auction.status == "scheduled",
                 Auction.start_time <= now
@@ -62,7 +71,6 @@ async def auction_scheduler():
             for auction in scheduled_auctions:
                 auction.status = "live"
 
-            # 2. End live auctions that are past end_time
             live_auctions = db.query(Auction).filter(
                 Auction.status == "live",
                 Auction.end_time <= now
@@ -70,7 +78,6 @@ async def auction_scheduler():
             for auction in live_auctions:
                 auction.status = "ended"
 
-                # Mark winning bid
                 winning_bid = db.query(Bid).filter(
                     Bid.auction_id == auction.id,
                     Bid.bid_amount == auction.current_highest_bid
@@ -78,7 +85,6 @@ async def auction_scheduler():
                 if winning_bid:
                     winning_bid.is_winning = True
 
-                # Create order automatically if there's a winner and no order exists
                 if auction.current_highest_bidder_id:
                     existing_order = db.query(Order).filter(
                         Order.auction_id == auction.id
@@ -105,7 +111,6 @@ async def auction_scheduler():
 
 @app.on_event("startup")
 async def startup_event():
-    # Start the background scheduler as an asyncio task
     asyncio.create_task(auction_scheduler())
 
 @app.get("/")
