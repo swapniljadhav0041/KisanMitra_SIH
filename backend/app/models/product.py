@@ -87,5 +87,8 @@ class InspectionReport(Base):
     final_base_price = Column(Float, nullable=False)
     notes = Column(Text)
 
+    # ✅ New column to store category-specific inspection parameters as JSON
+    inspection_data = Column(Text, nullable=True)
+
     product = relationship("Product", back_populates="inspection_report")
     agent = relationship("User", back_populates="inspections")

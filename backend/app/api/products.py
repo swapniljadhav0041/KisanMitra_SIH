@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 from typing import List
+import json
+
 from ..database import get_db
 from ..models.product import Product, ProductMedia, Category
 from ..models.user import User
@@ -66,7 +68,8 @@ def get_available_products(
     """
     products = db.query(Product).options(
         joinedload(Product.media),
-        joinedload(Product.category)
+        joinedload(Product.category),
+        joinedload(Product.auction),   # ✅ load auction relationship
     ).filter(Product.status.in_(["verified", "listed", "active"])).all()
 
     result = []
@@ -87,23 +90,64 @@ def get_available_products(
             "status": p.status,
             "category_slug": p.category.slug if p.category else None,
             "image": image_url,
+            "auction_type": p.auction_type,  # ✅ added
+            "current_highest_bid": p.auction.current_highest_bid if p.auction else None,  # ✅ added
         })
 
     return result
 
-@router.get("/{product_id}", response_model=ProductOut)
+@router.get("/{product_id}")
 def get_product(
     product_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """
+    Get full product details, including inspection report and auction info.
+    """
     product = db.query(Product).options(
         joinedload(Product.media),
-        joinedload(Product.inspection_report)
+        joinedload(Product.category),
+        joinedload(Product.inspection_report),
+        joinedload(Product.auction),
     ).filter(Product.id == product_id).first()
+
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+
+    first_media = product.media[0] if product.media else None
+    image_url = first_media.url if first_media else None
+    if image_url and image_url.startswith('/'):
+        image_url = f"{request.base_url}{image_url.lstrip('/')}"
+
+    inspection_report = product.inspection_report
+    inspection_data = {}
+    if inspection_report and inspection_report.inspection_data:
+        inspection_data = json.loads(inspection_report.inspection_data)
+
+    return {
+        "id": product.id,
+        "name": product.name,
+        "description": product.description,
+        "quantity": product.quantity,
+        "unit": product.unit,
+        "price": product.price,
+        "status": product.status,
+        "category_slug": product.category.slug if product.category else None,
+        "auction_type": product.auction_type,
+        "image": image_url,
+        "farmer_name": product.farmer.name if product.farmer else None,
+        "current_highest_bid": product.auction.current_highest_bid if product.auction else None,
+        "base_price": product.auction.base_price if product.auction else None,
+        "inspection_report": {
+            "quality_grade": inspection_report.quality_grade if inspection_report else None,
+            "final_base_price": inspection_report.final_base_price if inspection_report else None,
+            "recommendations": inspection_report.recommendations if inspection_report else None,
+            "notes": inspection_report.notes if inspection_report else None,
+            "inspection_data": inspection_data,
+        },
+    }
 
 @router.post("/{product_id}/media", response_model=ProductOut)
 def upload_media(

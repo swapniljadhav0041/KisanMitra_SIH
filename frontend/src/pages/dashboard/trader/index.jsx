@@ -8,6 +8,15 @@ import { useLanguage } from '../../../context/LanguageContext';
 import useAuthStore from '../../../store/authStore';
 import api from '../../../services/api';
 
+// ✅ Farm produce categories only
+const PRODUCE_CATEGORIES = [
+  'vegetables',
+  'fruits',
+  'grains',
+  'pulses',
+  'herbs',
+];
+
 export default function TraderHome() {
   const router = useRouter();
   const [category, setCategory] = useState('all');
@@ -39,7 +48,13 @@ export default function TraderHome() {
           api.get('/api/products/'),
           api.get('/api/auctions/live'),
         ]);
-        setProducts(productsRes.data || []);
+
+        // ✅ Filter only farm produce products
+        const farmProducts = (productsRes.data || []).filter((p) =>
+          PRODUCE_CATEGORIES.includes(p.category_slug)
+        );
+
+        setProducts(farmProducts);
         setAuctions(auctionsRes.data || []);
       } catch (error) {
         console.error('Failed to fetch data:', error);
@@ -61,7 +76,7 @@ export default function TraderHome() {
     );
   }
 
-  // Filter products
+  // Filter products further based on selected category and search
   const filteredProducts = products.filter((p) => {
     const matchCategory = category === 'all' || p.category_slug === category;
     const matchSearch =
@@ -70,7 +85,6 @@ export default function TraderHome() {
     return matchCategory && matchSearch;
   });
 
-  // We won't filter auctions by category for now, show all live ones
   const filteredAuctions = auctions;
 
   // Combine into one list for rendering

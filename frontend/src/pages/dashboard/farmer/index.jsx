@@ -41,7 +41,6 @@ export default function FarmerHome() {
     const fetchProducts = async () => {
       try {
         const res = await api.get('/api/products/');
-        // ✅ Filter only produce categories
         const filteredProducts = res.data.filter((p) =>
           produceCategories.includes(p.category_slug)
         );
@@ -147,7 +146,10 @@ export default function FarmerHome() {
         ) : (
           <div className="product-grid">
             {filtered.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard
+                key={product.id}
+                product={product}
+              />
             ))}
           </div>
         )}

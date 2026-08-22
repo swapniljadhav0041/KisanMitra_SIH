@@ -16,6 +16,9 @@ from .api import trader
 from .models.settings import PlatformSetting
 from .api import admin_analysis, admin_settings
 from .api import farmer_orders
+from .api import agent_dashboard
+from .api import admin_requests
+from .api import bids
 
 # Create database tables if they don't exist
 Base.metadata.create_all(bind=engine)
@@ -56,6 +59,9 @@ app.include_router(admin_analysis.router)
 app.include_router(admin_settings.router)
 app.include_router(farmer_orders.router)
 app.include_router(admin_products.router)
+app.include_router(agent_dashboard.router)
+app.include_router(admin_requests.router)
+app.include_router(bids.router)
 
 async def auction_scheduler():
     while True:

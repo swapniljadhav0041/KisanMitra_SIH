@@ -16,17 +16,26 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: handle 401 globally
+// Response interceptor: handle 401 and normalize validation errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // ✅ Convert FastAPI validation error detail from array to string
+    const detail = error.response?.data?.detail;
+    if (Array.isArray(detail)) {
+      error.response.data.detail = detail
+        .map((d) => d.msg || JSON.stringify(d))
+        .join(', ');
+    }
+
+    // Handle 401 globally
     if (error.response?.status === 401) {
-      // Clear auth state and redirect to login
       useAuthStore.getState().logout();
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
       }
     }
+
     return Promise.reject(error);
   }
 );

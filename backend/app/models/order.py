@@ -15,7 +15,7 @@ class Order(Base):
     total_price = Column(Float, nullable=False)
     status = Column(String(20), default='pending')  # pending, accepted, shipped, delivered, cancelled
     payment_status = Column(String(20), default='pending')  # pending, held, released, refunded
-
+    delivery_charge = Column(Float, default=0.0)
     # ✅ New delivery and payment fields
     delivery_address = Column(Text, nullable=True)
     delivery_city = Column(String(100), nullable=True)

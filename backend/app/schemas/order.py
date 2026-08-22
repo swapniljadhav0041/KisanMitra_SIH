@@ -15,6 +15,7 @@ class OrderOut(BaseModel):
     total_price: float
     status: str
     payment_status: str
+    
     created_at: datetime
 
     class Config:
