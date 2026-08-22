@@ -386,6 +386,11 @@ export default function FarmerListings() {
                             <MapPin size={15} />
                             <span>{product.location || t('listings.noLocation')}</span>
                           </div>
+                          {product.status === 'sold' && product.buyer_name && (
+                            <div className="buyer-info">
+                              <strong>Buyer:</strong> {product.buyer_name}
+                            </div>
+                          )}
                           <div className="product-details">
                             <span className="quantity">{t('listings.qty')}: {product.quantity} {product.unit}</span>
                             {price !== null && <strong className="product-price">₹{Number(price).toLocaleString('en-IN')}<small> / {product.unit}</small></strong>}
@@ -400,9 +405,14 @@ export default function FarmerListings() {
                             <div className="canceled-note"><XCircle size={14} /> Product canceled</div>
                           )}
                           <div className="product-actions">
-                            <Link href={`/products/${product.id}`} className="details-button">Details</Link>
+                            <button
+                              className="details-button"
+                              onClick={() => router.push(`/product/${product.id}`)}
+                            >
+                              Details
+                            </button>
 
-                            {product.status === 'verified' && product.inspection_report && (
+                            {product.inspection_report && (
                               <button
                                 className="report-button"
                                 onClick={(e) => {
@@ -505,6 +515,15 @@ export default function FarmerListings() {
       <style jsx>{`
         * {
           box-sizing: border-box;
+        }
+        .buyer-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #405047;
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 10px;
         }
 
         .listings-page {
@@ -1224,6 +1243,8 @@ export default function FarmerListings() {
           font-size: 12px;
           font-weight: 800;
           transition: 0.2s;
+          cursor: pointer;
+          font-family: inherit;
         }
 
         .details-button:hover {

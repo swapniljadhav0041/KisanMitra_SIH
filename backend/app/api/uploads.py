@@ -1,5 +1,4 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request
-from ..core.deps import get_current_user
 import os
 import uuid
 
@@ -13,7 +12,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def upload_file(
     request: Request,                     # ✅ added to build full URL
     file: UploadFile = File(...),
-    current_user=Depends(get_current_user),
+    # current_user=Depends(get_current_user),  # ❌ REMOVED – allows uploads during registration
 ):
     try:
         # Optional validation

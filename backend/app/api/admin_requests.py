@@ -14,6 +14,10 @@ router = APIRouter(prefix="/api/admin", tags=["admin-requests"])
 class AssignAgentRequest(BaseModel):
     agent_id: int
 
+class AssignDeliveryAgentRequest(BaseModel):
+    agent_id: int
+    delivery_commission: float = 0.0   # ✅ new field for delivery commission
+
 # ✅ List all agents for assignment dropdown
 @router.get("/agents")
 def list_agents(
@@ -73,11 +77,11 @@ def reject_inspection_request(
     db.commit()
     return {"message": "Inspection request rejected"}
 
-# ✅ Assign agent to delivery request
+# ✅ Assign agent to delivery request (with delivery commission)
 @router.post("/delivery-requests/{order_id}/assign")
 def assign_delivery_agent(
     order_id: int,
-    data: AssignAgentRequest,
+    data: AssignDeliveryAgentRequest,
     db: Session = Depends(get_db),
     admin: User = Depends(require_role("admin")),
 ):
@@ -91,6 +95,7 @@ def assign_delivery_agent(
 
     order.agent_id = agent.id
     order.status = "accepted"
+    order.delivery_commission = data.delivery_commission   # ✅ set commission
     db.commit()
     return {"message": "Agent assigned to delivery request"}
 

@@ -14,20 +14,6 @@ import {
   HiOutlineX,
 } from 'react-icons/hi';
 
-// Unit conversion to kg for produce weight-based delivery
-const UNIT_TO_KG = {
-  kg: 1,
-  quintal: 100,
-  ton: 1000,
-  gram: 0.001,
-  litre: 1,
-  unit: 1,
-  packet: 1,
-  box: 1,
-};
-
-const PRODUCE_CATEGORIES = ['vegetables', 'fruits', 'grains', 'pulses', 'herbs'];
-
 function getImageUrl(url) {
   if (!url) return '';
   if (url.startsWith('http')) return url;
@@ -35,10 +21,13 @@ function getImageUrl(url) {
   return `${API_URL}${url.startsWith('/') ? url : '/' + url}`;
 }
 
+const PRODUCE_CATEGORIES = ['vegetables', 'fruits', 'grains', 'pulses', 'herbs'];
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { product_id, quantity } = router.query;
   const { isAuthenticated, user, hydrate } = useAuthStore();
+
   const [product, setProduct] = useState(null);
   const [form, setForm] = useState({
     delivery_address: '',
@@ -48,7 +37,9 @@ export default function CheckoutPage() {
     delivery_phone: '',
     payment_method: 'cod',
   });
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [onlineMethod, setOnlineMethod] = useState('');
   const [paymentDetails, setPaymentDetails] = useState({
     upi_id: '',
@@ -57,7 +48,14 @@ export default function CheckoutPage() {
     account_number: '',
     ifsc_code: '',
   });
+
   const [submitting, setSubmitting] = useState(false);
+  const [deliveryCharge, setDeliveryCharge] = useState(0);
+  const [distanceKm, setDistanceKm] = useState(0);
+  const [weightKg, setWeightKg] = useState(0);
+  const [weightCharge, setWeightCharge] = useState(0);
+  const [distanceCharge, setDistanceCharge] = useState(0);
+  const [isCalculating, setIsCalculating] = useState(false);
 
   useEffect(() => {
     hydrate();
@@ -68,7 +66,6 @@ export default function CheckoutPage() {
       router.push('/login');
       return;
     }
-    // Allow both farmer and trader
     if (!['farmer', 'trader'].includes(user?.role)) {
       router.replace('/dashboard/' + user?.role);
       return;
@@ -90,30 +87,61 @@ export default function CheckoutPage() {
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handlePaymentDetailsChange = (e) => {
-    const { name, value } = e.target;
-    setPaymentDetails((prev) => ({ ...prev, [name]: value }));
-  };
-
-  // Calculate product total and delivery charge
-  const productTotal = product ? product.price * Number(quantity || 1) : 0;
-  let deliveryCharge = 0;
-  if (product) {
-    const categorySlug = product.category_slug || '';
-    if (PRODUCE_CATEGORIES.includes(categorySlug)) {
-      const factor = UNIT_TO_KG[product.unit?.toLowerCase()] || 1;
-      // ✅ ₹50 per 100 kg -> ₹0.5 per kg
-      deliveryCharge = Number(quantity || 1) * factor * 0.5;
-    } else {
-      deliveryCharge = productTotal >= 10000 ? 0 : 100;
+  const fetchDeliveryCharge = async () => {
+    if (
+      !product ||
+      !form.delivery_address ||
+      !form.delivery_city ||
+      !form.delivery_state ||
+      !form.delivery_pincode
+    ) {
+      setDeliveryCharge(0);
+      setDistanceKm(0);
+      setWeightKg(0);
+      setWeightCharge(0);
+      setDistanceCharge(0);
+      return;
     }
-  }
-  const totalPayable = productTotal + deliveryCharge;
+
+    setIsCalculating(true);
+    try {
+      const res = await api.post('/api/utils/delivery-charge', {
+        product_id: product.id,
+        quantity: Number(quantity || 1),
+        delivery_address: form.delivery_address,
+        delivery_city: form.delivery_city,
+        delivery_state: form.delivery_state,
+        delivery_pincode: form.delivery_pincode,
+      });
+
+      setDeliveryCharge(res.data.delivery_charge);
+      setDistanceKm(res.data.distance_km);
+      setWeightKg(res.data.weight_kg);
+      setWeightCharge(res.data.weight_charge);
+      setDistanceCharge(res.data.distance_charge);
+    } catch (error) {
+      console.error('Failed to calculate delivery charge:', error);
+      // fallback to local calculation
+      setDeliveryCharge(0);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (product) {
+      fetchDeliveryCharge();
+    }
+  }, [product, quantity, form.delivery_address, form.delivery_city, form.delivery_state, form.delivery_pincode]);
+
+  const productTotal = product ? product.price * Number(quantity || 1) : 0;
+
+  const platformFee =
+    product && PRODUCE_CATEGORIES.includes(product.category_slug || '')
+      ? Math.max(Number(productTotal) * 0.02, 100)
+      : 0;
+
+  const totalPayable = productTotal + deliveryCharge + platformFee;
 
   const validateDelivery = () => {
     if (
@@ -129,7 +157,7 @@ export default function CheckoutPage() {
     return true;
   };
 
-  const placeOrder = async (paymentMethod) => {
+  const placeOrder = async (paymentMethod, transactionId = null) => {
     setSubmitting(true);
     try {
       await api.post('/api/farmer/orders', {
@@ -141,6 +169,8 @@ export default function CheckoutPage() {
         delivery_pincode: form.delivery_pincode,
         delivery_phone: form.delivery_phone,
         payment_method: paymentMethod,
+        payment_status: transactionId ? 'held' : 'pending',
+        payment_transaction_id: transactionId,
       });
       toast.success('Order placed successfully');
       router.push(`/dashboard/${user?.role || 'farmer'}`);
@@ -155,7 +185,7 @@ export default function CheckoutPage() {
   const handleCodSubmit = (e) => {
     e.preventDefault();
     if (!validateDelivery()) return;
-    placeOrder('cod');
+    setShowConfirmModal(true);
   };
 
   const handleOnlinePay = () => {
@@ -183,9 +213,34 @@ export default function CheckoutPage() {
       }
     }
 
-    toast.success('Payment successful!');
     setShowPaymentModal(false);
-    placeOrder(onlineMethod);
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmOrder = async () => {
+    setSubmitting(true);
+    try {
+      if (form.payment_method === 'cod') {
+        await placeOrder('cod');
+      } else {
+        const paymentRes = await api.post('/api/payments/mock', {
+          amount: totalPayable,
+          method: onlineMethod,
+        });
+
+        if (paymentRes.data.success) {
+          await placeOrder(onlineMethod, paymentRes.data.transaction_id);
+        } else {
+          throw new Error('Payment failed');
+        }
+      }
+    } catch (error) {
+      console.error('Order error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to place order');
+    } finally {
+      setSubmitting(false);
+      setShowConfirmModal(false);
+    }
   };
 
   const openPaymentModal = () => {
@@ -373,10 +428,28 @@ export default function CheckoutPage() {
                 <span>Subtotal</span>
                 <span>₹{productTotal}</span>
               </div>
+
               <div style={styles.summaryRow}>
                 <span>Delivery Charge</span>
-                <span>{deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}</span>
+                <span>
+                  {isCalculating ? 'Calculating...' : deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
+                </span>
               </div>
+
+              {distanceKm > 0 && (
+                <div style={{ ...styles.summaryRow, fontSize: '11px', color: '#89948e' }}>
+                  <span>Distance: {distanceKm} km</span>
+                  <span>Weight charge: ₹{weightCharge} + Distance: ₹{distanceCharge}</span>
+                </div>
+              )}
+
+              {platformFee > 0 && (
+                <div style={styles.summaryRow}>
+                  <span>Platform Fee (2% min ₹100)</span>
+                  <span>₹{platformFee}</span>
+                </div>
+              )}
+
               <div style={styles.divider} />
               <div style={{ ...styles.summaryRow, ...styles.totalRow }}>
                 <span>Total Payable</span>
@@ -387,6 +460,7 @@ export default function CheckoutPage() {
         </div>
       </main>
 
+      {/* Payment Method Modal */}
       {showPaymentModal && (
         <div style={styles.modalOverlay} onClick={() => setShowPaymentModal(false)}>
           <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
@@ -487,6 +561,36 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowConfirmModal(false)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Confirm Order</h2>
+              <button style={styles.modalClose} onClick={() => setShowConfirmModal(false)}>
+                <HiOutlineX size={20} />
+              </button>
+            </div>
+            <div style={styles.confirmBody}>
+              <p><strong>Product:</strong> {product.name}</p>
+              <p><strong>Quantity:</strong> {quantity || 1} {product.unit}</p>
+              <p><strong>Subtotal:</strong> ₹{productTotal}</p>
+              <p><strong>Delivery Charge:</strong> ₹{deliveryCharge}</p>
+              {platformFee > 0 && <p><strong>Platform Fee:</strong> ₹{platformFee}</p>}
+              <p><strong>Total Payable:</strong> ₹{totalPayable}</p>
+              <p><strong>Payment Method:</strong> {form.payment_method === 'cod' ? 'Cash on Delivery' : onlineMethod === 'upi' ? 'UPI' : 'Net Banking'}</p>
+              <p><strong>Delivery Address:</strong> {form.delivery_address}, {form.delivery_city}, {form.delivery_state} - {form.delivery_pincode}</p>
+            </div>
+            <div style={styles.modalActions}>
+              <button onClick={() => setShowConfirmModal(false)} style={styles.cancelButton}>Cancel</button>
+              <button onClick={handleConfirmOrder} disabled={submitting} style={styles.submitButton}>
+                {submitting ? 'Processing...' : 'Confirm Order'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -565,6 +669,16 @@ const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
     background: '#2d6a4f', color: '#fff', border: 'none', padding: '14px', borderRadius: '12px',
     fontWeight: '700', cursor: 'pointer', fontSize: '15px', boxShadow: '0 7px 18px rgba(45,106,79,0.2)',
+  },
+  confirmBody: {
+    display: 'flex', flexDirection: 'column', gap: '8px', color: '#526058', fontSize: '14px', marginBottom: '20px',
+  },
+  modalActions: {
+    display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px',
+  },
+  cancelButton: {
+    background: '#fff', color: '#526058', border: '1px solid #dbe6de', padding: '10px 18px', borderRadius: '10px',
+    fontWeight: '700', cursor: 'pointer', fontSize: '14px',
   },
   '@media (max-width: 800px)': {
     layout: { gridTemplateColumns: '1fr' },

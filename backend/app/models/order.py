@@ -14,8 +14,9 @@ class Order(Base):
     quantity = Column(Float, nullable=False)
     total_price = Column(Float, nullable=False)
     status = Column(String(20), default='pending')  # pending, accepted, shipped, delivered, cancelled
-    payment_status = Column(String(20), default='pending')  # pending, held, released, refunded
+    payment_status = Column(String(20), default='pending')  # pending, held, released, refunded, collected
     delivery_charge = Column(Float, default=0.0)
+
     # ✅ New delivery and payment fields
     delivery_address = Column(Text, nullable=True)
     delivery_city = Column(String(100), nullable=True)
@@ -23,6 +24,11 @@ class Order(Base):
     delivery_pincode = Column(String(10), nullable=True)
     delivery_phone = Column(String(20), nullable=True)
     payment_method = Column(String(50), nullable=True)
+
+    # ✅ Platform fee and transaction fields
+    platform_fee = Column(Float, default=0.0)
+    payment_transaction_id = Column(String(255), nullable=True)
+    delivery_commission = Column(Float, default=0.0)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

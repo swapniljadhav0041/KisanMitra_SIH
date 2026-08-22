@@ -20,6 +20,12 @@ class FarmerProfile(Base):
     pan_verified = Column(Boolean, default=False)
     farmer_id_verified = Column(Boolean, default=False)
 
+    # ✅ New document fields (dummy verification)
+    aadhar_document = Column(String(500), nullable=True)
+    pan_document = Column(String(500), nullable=True)
+    farmer_card_document = Column(String(500), nullable=True)
+    document_verified = Column(Boolean, default=False)
+
     rating = Column(Float, default=0.0)
 
     user = relationship("User", back_populates="farmer_profile")

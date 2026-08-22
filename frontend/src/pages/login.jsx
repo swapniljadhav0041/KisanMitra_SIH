@@ -116,7 +116,7 @@ export default function Login() {
             />
           </div>
 
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: '12px' }}>
             <label style={{
               display: 'block',
               fontSize: '14px',
@@ -167,6 +167,18 @@ export default function Login() {
                 {showPassword ? <HiEyeOff /> : <HiEye />}
               </button>
             </div>
+          </div>
+
+          {/* Forgot Password Link */}
+          <div style={{ textAlign: 'right', marginBottom: '20px' }}>
+            <Link href="/forgot-password" style={{
+              color: '#2d6a4f',
+              fontSize: '13px',
+              fontWeight: '600',
+              textDecoration: 'none',
+            }}>
+              {t('auth.forgotPassword') || 'Forgot Password?'}
+            </Link>
           </div>
 
           <button

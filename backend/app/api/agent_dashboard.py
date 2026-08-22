@@ -10,6 +10,7 @@ from ..database import get_db
 from ..models.user import User, AgentProfile
 from ..models.order import Order, OrderDeliveryTracking
 from ..models.product import Product, InspectionReport
+from ..models.payment import Commission   # ✅ new import
 from ..core.deps import require_role
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -85,8 +86,15 @@ def agent_dashboard(
         .count()
     )
 
-    # Earnings = ₹200 per completed inspection
-    total_earnings = completed_inspections * 200.0
+    # Delivery commissions earned by this agent
+    delivery_commissions = (
+        db.query(func.coalesce(func.sum(Commission.amount), 0.0))
+        .filter(Commission.agent_id == current_user.id)
+        .scalar()
+    ) or 0.0
+
+    inspection_earnings = completed_inspections * 200.0
+    total_earnings = inspection_earnings + float(delivery_commissions)
 
     # Only pending inspections
     recent_inspections = (
@@ -169,6 +177,7 @@ def list_agent_deliveries(
             "status": order.status,
             "payment_status": order.payment_status,
             "total_price": order.total_price,
+            "delivery_commission": order.delivery_commission,
             "created_at": order.created_at.isoformat() if order.created_at else None,
         }
     return [order_to_dict(o) for o in orders]
@@ -191,6 +200,7 @@ def update_delivery_status(
     old_status = order.status
     order.status = data.status
 
+    # Add tracking entry
     tracking = OrderDeliveryTracking(
         order_id=order.id,
         status=data.status,
@@ -199,8 +209,29 @@ def update_delivery_status(
         updated_by=current_user.id,
     )
     db.add(tracking)
-    db.commit()
 
+    # ✅ On delivery completion, update payment status and credit delivery commission
+    if data.status == "delivered":
+        if order.payment_method == "cod":
+            order.payment_status = "collected"
+        else:
+            order.payment_status = "released"
+
+        # Credit delivery commission to agent (if not already credited)
+        existing_commission = db.query(Commission).filter(
+            Commission.order_id == order.id,
+            Commission.agent_id == current_user.id,
+        ).first()
+        if not existing_commission and order.delivery_commission > 0:
+            commission = Commission(
+                order_id=order.id,
+                agent_id=current_user.id,
+                amount=order.delivery_commission,
+                status="paid",
+            )
+            db.add(commission)
+
+    db.commit()
     return {"message": f"Order status updated from {old_status} to {data.status}"}
 
 # ---------- Inspections ----------
@@ -257,7 +288,14 @@ def submit_inspection(
         report.inspection_data = json.dumps(data.parameters)
 
     report.inspection_date = datetime.utcnow()
+
+    # ✅ Overwrite farmer's price with agent's final base price
     product.status = "verified"
+    product.price = data.final_base_price
+
+    # Update auction base price if auction exists
+    if product.auction:
+        product.auction.base_price = data.final_base_price
 
     db.commit()
     return {"message": "Inspection report submitted successfully"}
@@ -394,9 +432,14 @@ def agent_earnings(
         .count()
     )
 
-    delivery_earnings = 0.0  # change if delivery commission implemented later
+    # Sum of delivery commissions for this agent
+    delivery_commissions = (
+        db.query(func.coalesce(func.sum(Commission.amount), 0.0))
+        .filter(Commission.agent_id == current_user.id)
+        .scalar()
+    ) or 0.0
 
-    total_earnings = inspection_earnings + delivery_earnings
+    total_earnings = inspection_earnings + float(delivery_commissions)
 
     recent_completed_inspections = (
         db.query(Product)
@@ -439,7 +482,7 @@ def agent_earnings(
             "created_at": order.created_at.isoformat() if order.created_at else None,
         }
 
-    # Build transactions list
+    # Build transactions list (inspection + delivery commissions)
     transactions = []
     for product in recent_completed_inspections:
         report = product.inspection_report
@@ -450,14 +493,25 @@ def agent_earnings(
             "amount": 200.0,
             "date": report.inspection_date.isoformat() if report and report.inspection_date else None,
         })
-    for order in recent_completed_deliveries:
+
+    # Fetch delivery commission transactions
+    delivery_commissions_records = (
+        db.query(Commission)
+        .filter(Commission.agent_id == current_user.id)
+        .order_by(Commission.id.desc())
+        .limit(10)
+        .all()
+    )
+    for comm in delivery_commissions_records:
+        order = comm.order
         transactions.append({
-            "id": f"del_{order.id}",
-            "type": "Delivery",
-            "description": f"Delivery of {order.product.name if order.product else 'Order'}",
-            "amount": 0.0,
-            "date": order.created_at.isoformat() if order.created_at else None,
+            "id": f"del_{comm.id}",
+            "type": "Delivery Commission",
+            "description": f"Delivery of {order.product.name if order and order.product else 'Order'}",
+            "amount": comm.amount,
+            "date": order.created_at.isoformat() if order and order.created_at else None,
         })
+
     transactions.sort(key=lambda x: x["date"] if x["date"] else "", reverse=True)
 
     return {
@@ -465,8 +519,8 @@ def agent_earnings(
             "completed_inspections": completed_inspections,
             "inspection_earnings": inspection_earnings,
             "completed_deliveries": completed_deliveries,
-            "delivery_earnings": delivery_earnings,
-            "total_earnings": total_earnings,
+            "delivery_earnings": float(delivery_commissions),
+            "total_earnings": float(total_earnings),
         },
         "recent_inspections": [inspection_to_dict(p) for p in recent_completed_inspections],
         "recent_deliveries": [delivery_to_dict(o) for o in recent_completed_deliveries],

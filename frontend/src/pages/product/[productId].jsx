@@ -131,10 +131,41 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {product.auction_type === 'auction' && (
+              {/* ✅ Buyer info for sold products */}
+              {product.status === 'sold' && product.buyer_name && (
                 <div style={styles.meta}>
-                  <span><strong>Current Highest Bid:</strong> ₹{product.current_highest_bid || product.base_price}</span>
+                  <span><strong>Buyer:</strong> {product.buyer_name}</span>
                 </div>
+              )}
+
+              {product.auction_type === 'auction' && (
+                <>
+                  <div style={styles.meta}>
+                    <span><strong>Current Highest Bid:</strong> ₹{product.current_highest_bid || product.base_price}</span>
+                  </div>
+
+                  {/* Bid History */}
+                  {product.bids && product.bids.length > 0 ? (
+                    <div style={styles.bidsSection}>
+                      <h3 style={styles.bidsTitle}>Bid History</h3>
+                      {product.bids.map((bid) => (
+                        <div key={bid.id} style={styles.bidRow}>
+                          <div style={styles.bidLeft}>
+                            <strong>{bid.bidder_name}</strong>
+                            <span style={styles.bidTime}>
+                              {new Date(bid.bid_time).toLocaleString('en-IN', {
+                                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                          <div style={styles.bidAmount}>₹{bid.bid_amount}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={styles.noBids}>No bids yet.</p>
+                  )}
+                </>
               )}
 
               {/* View Report button */}
@@ -232,5 +263,44 @@ const styles = {
   reportContent: { color: '#526058', fontSize: '14px' },
   paramTitle: { margin: '15px 0 10px', color: '#173b2a', fontSize: '16px', fontWeight: '800' },
   paramRow: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f0f3f1' },
+
+  // Bid history styles
+  bidsSection: {
+    background: '#f9fbfa',
+    borderRadius: '12px',
+    padding: '15px',
+    marginTop: '10px',
+  },
+  bidsTitle: {
+    margin: '0 0 10px',
+    color: '#173b2a',
+    fontSize: '16px',
+    fontWeight: '800',
+  },
+  bidRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderBottom: '1px solid #e9efeb',
+  },
+  bidLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  bidTime: {
+    color: '#89948e',
+    fontSize: '11px',
+  },
+  bidAmount: {
+    color: '#2d6a4f',
+    fontWeight: '850',
+  },
+  noBids: {
+    color: '#9aa49e',
+    fontSize: '13px',
+  },
+
   '@media (max-width: 900px)': { card: { gridTemplateColumns: '1fr' } },
 };

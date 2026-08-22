@@ -1,15 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from datetime import datetime, timedelta
+
 from ..database import get_db
 from ..models.user import User, TraderLicense, AgentProfile
+from ..models.farmer import FarmerProfile
 from ..models.otp import OtpVerification
 from ..schemas.auth import (
     FarmerRegister, TraderRegister, AgentCreate, AdminCreate,
-    LoginRequest, TokenResponse, UserOut
+    LoginRequest, TokenResponse, UserOut,
+    ForgotPasswordRequest, ResetPasswordRequest
 )
 from ..core.security import hash_password, verify_password, create_access_token
 from ..core.deps import get_current_user, require_role
+from .otp import generate_otp
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -50,7 +55,27 @@ def register_farmer(data: FarmerRegister, db: Session = Depends(get_db)):
     if not is_otp_verified(data.email, db) or not is_otp_verified(data.phone, db):
         raise HTTPException(status_code=400, detail="Email and phone must be verified via OTP")
 
-    user = create_user_common(db, data.dict(), role="farmer")
+    user = create_user_common(db, {
+        "name": data.name,
+        "email": data.email,
+        "phone": data.phone,
+        "password": data.password,
+        "language": data.language,
+        "location": data.location
+    }, role="farmer")
+
+    # Create farmer profile with document URLs and dummy verification
+    farmer_profile = FarmerProfile(
+        user_id=user.id,
+        aadhar_document=data.aadhar_document,
+        pan_document=data.pan_document,
+        farmer_card_document=data.farmer_card_document,
+        document_verified=True,   # dummy verification
+    )
+    db.add(farmer_profile)
+    db.commit()
+
+    # Delete used OTP verifications
     db.query(OtpVerification).filter(
         OtpVerification.contact.in_([data.email, data.phone]),
         OtpVerification.is_verified == True
@@ -84,11 +109,17 @@ def register_trader(data: TraderRegister, db: Session = Depends(get_db)):
         user_id=user.id,
         licence_number=data.licence_number,
         expiry_date=data.licence_expiry,
-        verified=False
+        verified=False,
+        # Document fields
+        aadhar_document=data.aadhar_document,
+        pan_document=data.pan_document,
+        trading_licence_document=data.trading_licence_document,
+        document_verified=True,   # dummy verification
     )
     db.add(license)
     db.commit()
 
+    # Delete used OTP verifications
     db.query(OtpVerification).filter(
         OtpVerification.contact.in_([data.email, data.phone]),
         OtpVerification.is_verified == True
@@ -117,6 +148,70 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         "user_id": user.id,
         "name": user.name
     }
+
+@router.post("/forgot-password")
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Email not registered")
+
+    # Generate OTP and save
+    otp = generate_otp()
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+
+    # Delete old unverified OTPs for this email
+    db.query(OtpVerification).filter(
+        OtpVerification.contact == data.email,
+        OtpVerification.is_verified == False
+    ).delete()
+
+    record = OtpVerification(
+        contact=data.email,
+        otp_code=otp,
+        expires_at=expires_at,
+        is_verified=False
+    )
+    db.add(record)
+    db.commit()
+
+    # For demo, print OTP; real email integration can be added later
+    print(f"Password reset OTP for {data.email}: {otp}")
+
+    return {"message": "OTP sent to email"}
+
+@router.post("/reset-password")
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    # Verify OTP
+    record = db.query(OtpVerification).filter(
+        OtpVerification.contact == data.email,
+        OtpVerification.otp_code == data.otp,
+        OtpVerification.is_verified == False,
+        OtpVerification.expires_at > datetime.utcnow()
+    ).first()
+    if not record:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validate new password strength (same as change-password)
+    password = data.new_password
+    if not (6 <= len(password) <= 12):
+        raise HTTPException(status_code=400, detail="Password must be 6-12 characters")
+    if not any(c.isupper() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain an uppercase letter")
+    if not any(c.islower() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain a lowercase letter")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain a number")
+    if not any(c in "@$!%*?&#" for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain a special character")
+
+    user.password_hash = hash_password(data.new_password)
+    record.is_verified = True
+    db.commit()
+    return {"message": "Password reset successfully"}
 
 @router.put("/change-password")
 def change_password(
@@ -149,7 +244,6 @@ def read_current_user(current_user: User = Depends(get_current_user)):
 
 @router.post("/admin/agents", response_model=TokenResponse)
 def create_agent(data: AgentCreate, db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
-    # Check OTP verification for email and phone
     if not is_otp_verified(data.email, db) or not is_otp_verified(data.phone, db):
         raise HTTPException(
             status_code=400,
@@ -157,7 +251,7 @@ def create_agent(data: AgentCreate, db: Session = Depends(get_db), admin: User =
         )
 
     user = create_user_common(db, data.dict(), role="agent")
-    user.verified = True   # ✅ Admin-created agents are automatically verified
+    user.verified = True
     db.commit()
 
     agent_profile = AgentProfile(
@@ -174,7 +268,6 @@ def create_agent(data: AgentCreate, db: Session = Depends(get_db), admin: User =
     db.add(agent_profile)
     db.commit()
 
-    # Delete used OTP verifications
     db.query(OtpVerification).filter(
         OtpVerification.contact.in_([data.email, data.phone]),
         OtpVerification.is_verified == True

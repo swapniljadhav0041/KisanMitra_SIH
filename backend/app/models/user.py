@@ -45,6 +45,12 @@ class TraderLicense(Base):
     expiry_date = Column(DateTime, nullable=True)
     verified = Column(Boolean, default=False)
 
+    # ✅ Document fields (dummy verification)
+    aadhar_document = Column(String(500), nullable=True)
+    pan_document = Column(String(500), nullable=True)
+    trading_licence_document = Column(String(500), nullable=True)
+    document_verified = Column(Boolean, default=False)
+
     user = relationship("User", back_populates="trader_license")
 
 

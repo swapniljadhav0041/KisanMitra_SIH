@@ -19,6 +19,9 @@ from .api import farmer_orders
 from .api import agent_dashboard
 from .api import admin_requests
 from .api import bids
+from .api import farmer_payments
+from .api import utils
+from .api import farmer_transactions
 
 # Create database tables if they don't exist
 Base.metadata.create_all(bind=engine)
@@ -62,6 +65,9 @@ app.include_router(admin_products.router)
 app.include_router(agent_dashboard.router)
 app.include_router(admin_requests.router)
 app.include_router(bids.router)
+app.include_router(farmer_payments.router)
+app.include_router(utils.router)
+app.include_router(farmer_transactions.router)
 
 async def auction_scheduler():
     while True:
@@ -107,6 +113,7 @@ async def auction_scheduler():
                             payment_status="pending"
                         )
                         db.add(order)
+                        auction.product.status = "sold"
 
             db.commit()
         except Exception as e:

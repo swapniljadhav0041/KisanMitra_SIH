@@ -11,11 +11,17 @@ class UserBase(BaseModel):
 
 class FarmerRegister(UserBase):
     password: str
+    aadhar_document: Optional[str] = None
+    pan_document: Optional[str] = None
+    farmer_card_document: Optional[str] = None
 
 class TraderRegister(UserBase):
     password: str
     licence_number: str
     licence_expiry: Optional[datetime] = None
+    aadhar_document: Optional[str] = None
+    pan_document: Optional[str] = None
+    trading_licence_document: Optional[str] = None
 
 class AgentCreate(BaseModel):
     name: str
@@ -39,6 +45,14 @@ class AdminCreate(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
 
 class TokenResponse(BaseModel):
     access_token: str

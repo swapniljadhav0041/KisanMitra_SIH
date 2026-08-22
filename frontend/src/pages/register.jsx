@@ -14,6 +14,19 @@ export default function Register() {
   const [otpPhoneSent, setOtpPhoneSent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [documentsUploading, setDocumentsUploading] = useState({
+    aadhar: false,
+    pan: false,
+    farmer_card: false,
+    trading_licence: false,
+  });
+  const [documentPreview, setDocumentPreview] = useState({
+    aadhar: '',
+    pan: '',
+    farmer_card: '',
+    trading_licence: '',
+  });
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -26,6 +39,10 @@ export default function Register() {
     licence_expiry: '',
     location: '',
     language: 'en',
+    aadhar_document: '',
+    pan_document: '',
+    farmer_card_document: '',
+    trading_licence_document: '',
   });
 
   const { t } = useLanguage();
@@ -107,6 +124,25 @@ export default function Register() {
     }
   };
 
+  const handleDocumentUpload = async (field, file) => {
+    if (!file) return;
+    setDocumentsUploading((prev) => ({ ...prev, [field]: true }));
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/api/uploads/', formData);
+      const url = res.data.url;
+      setForm((prev) => ({ ...prev, [field]: url }));
+      setDocumentPreview((prev) => ({ ...prev, [field]: URL.createObjectURL(file) }));
+      toast.success('Document uploaded');
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload document');
+    } finally {
+      setDocumentsUploading((prev) => ({ ...prev, [field]: false }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -178,7 +214,7 @@ export default function Register() {
         borderRadius: '20px',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
         width: '100%',
-        maxWidth: '480px',
+        maxWidth: '520px',
         padding: '40px 32px',
         textAlign: 'center'
       }}>
@@ -312,6 +348,85 @@ export default function Register() {
               </>
             )}
 
+            {/* Document Upload Section */}
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ fontSize: '14px', fontWeight: '700', color: '#2d3436', marginBottom: '12px' }}>{t('auth.documents') || 'Document Verification (Dummy)'}</p>
+
+              {role === 'farmer' ? (
+                <>
+                  <DocumentUploadField
+                    label="Aadhaar Card"
+                    field="aadhar_document"
+                    form={form}
+                    setForm={setForm}
+                    uploading={documentsUploading.aadhar}
+                    setUploading={(val) => setDocumentsUploading(prev => ({...prev, aadhar: val}))}
+                    preview={documentPreview.aadhar}
+                    setPreview={(val) => setDocumentPreview(prev => ({...prev, aadhar: val}))}
+                    handleDocumentUpload={handleDocumentUpload}
+                  />
+                  <DocumentUploadField
+                    label="PAN Card"
+                    field="pan_document"
+                    form={form}
+                    setForm={setForm}
+                    uploading={documentsUploading.pan}
+                    setUploading={(val) => setDocumentsUploading(prev => ({...prev, pan: val}))}
+                    preview={documentPreview.pan}
+                    setPreview={(val) => setDocumentPreview(prev => ({...prev, pan: val}))}
+                    handleDocumentUpload={handleDocumentUpload}
+                  />
+                  <DocumentUploadField
+                    label="Farmer Card"
+                    field="farmer_card_document"
+                    form={form}
+                    setForm={setForm}
+                    uploading={documentsUploading.farmer_card}
+                    setUploading={(val) => setDocumentsUploading(prev => ({...prev, farmer_card: val}))}
+                    preview={documentPreview.farmer_card}
+                    setPreview={(val) => setDocumentPreview(prev => ({...prev, farmer_card: val}))}
+                    handleDocumentUpload={handleDocumentUpload}
+                  />
+                </>
+              ) : (
+                <>
+                  <DocumentUploadField
+                    label="Aadhaar Card"
+                    field="aadhar_document"
+                    form={form}
+                    setForm={setForm}
+                    uploading={documentsUploading.aadhar}
+                    setUploading={(val) => setDocumentsUploading(prev => ({...prev, aadhar: val}))}
+                    preview={documentPreview.aadhar}
+                    setPreview={(val) => setDocumentPreview(prev => ({...prev, aadhar: val}))}
+                    handleDocumentUpload={handleDocumentUpload}
+                  />
+                  <DocumentUploadField
+                    label="PAN Card"
+                    field="pan_document"
+                    form={form}
+                    setForm={setForm}
+                    uploading={documentsUploading.pan}
+                    setUploading={(val) => setDocumentsUploading(prev => ({...prev, pan: val}))}
+                    preview={documentPreview.pan}
+                    setPreview={(val) => setDocumentPreview(prev => ({...prev, pan: val}))}
+                    handleDocumentUpload={handleDocumentUpload}
+                  />
+                  <DocumentUploadField
+                    label="Trading Licence"
+                    field="trading_licence_document"
+                    form={form}
+                    setForm={setForm}
+                    uploading={documentsUploading.trading_licence}
+                    setUploading={(val) => setDocumentsUploading(prev => ({...prev, trading_licence: val}))}
+                    preview={documentPreview.trading_licence}
+                    setPreview={(val) => setDocumentPreview(prev => ({...prev, trading_licence: val}))}
+                    handleDocumentUpload={handleDocumentUpload}
+                  />
+                </>
+              )}
+            </div>
+
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" onClick={() => setStep(1)} style={{
                 flex: 1, padding: '14px', background: 'transparent', color: '#2d6a4f',
@@ -394,6 +509,44 @@ export default function Register() {
             {t('auth.loginHere')}
           </Link>
         </p>
+      </div>
+    </div>
+  );
+}
+
+// Document upload field component
+function DocumentUploadField({ label, field, form, setForm, uploading, setUploading, preview, setPreview, handleDocumentUpload }) {
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <label style={{ fontSize: '13px', fontWeight: '600', color: '#2d3436', display: 'block', marginBottom: '5px' }}>{label}</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => {
+            const file = e.target.files[0];
+            if (file) handleDocumentUpload(field, file);
+          }}
+          style={{ display: 'none' }}
+          id={`file-${field}`}
+        />
+        <label htmlFor={`file-${field}`} style={{
+          padding: '8px 16px',
+          borderRadius: '50px',
+          border: '2px solid #2d6a4f',
+          background: 'transparent',
+          color: '#2d6a4f',
+          fontWeight: '600',
+          cursor: 'pointer',
+          fontSize: '13px',
+          whiteSpace: 'nowrap',
+          opacity: uploading ? 0.6 : 1
+        }}>
+          {uploading ? 'Uploading...' : preview ? 'Change' : 'Upload'}
+        </label>
+        {preview && (
+          <img src={preview} alt={label} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '8px' }} />
+        )}
       </div>
     </div>
   );
