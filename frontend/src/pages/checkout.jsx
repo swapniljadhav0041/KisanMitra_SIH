@@ -121,7 +121,6 @@ export default function CheckoutPage() {
       setDistanceCharge(res.data.distance_charge);
     } catch (error) {
       console.error('Failed to calculate delivery charge:', error);
-      // fallback to local calculation
       setDeliveryCharge(0);
     } finally {
       setIsCalculating(false);
@@ -142,6 +141,18 @@ export default function CheckoutPage() {
       : 0;
 
   const totalPayable = productTotal + deliveryCharge + platformFee;
+
+  // ========== FIX: define handleChange and handlePaymentDetailsChange ==========
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handlePaymentDetailsChange = (e) => {
+    const { name, value } = e.target;
+    setPaymentDetails((prev) => ({ ...prev, [name]: value }));
+  };
+  // ============================================================================
 
   const validateDelivery = () => {
     if (

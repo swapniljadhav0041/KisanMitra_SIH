@@ -70,10 +70,27 @@ def create_order(
         weight_kg = data.quantity * unit_factor
         weight_charge = round(weight_kg * 0.5, 2)
 
-        # Distance component
-        pickup_address = f"{product.location or ''}, {product.pincode or ''}, India".strip()
-        delivery_address = f"{data.delivery_address}, {data.delivery_city}, {data.delivery_state}, {data.delivery_pincode}, India"
+        # Clean pickup address
+        pickup_parts = []
+        if product.location and product.location.strip():
+            pickup_parts.append(product.location.strip())
+        if product.pincode and product.pincode.strip():
+            pickup_parts.append(product.pincode.strip())
+        pickup_address = ", ".join(pickup_parts) + ", India" if pickup_parts else "India"
 
+        # Clean delivery address
+        delivery_parts = []
+        if data.delivery_address and data.delivery_address.strip():
+            delivery_parts.append(data.delivery_address.strip())
+        if data.delivery_city and data.delivery_city.strip():
+            delivery_parts.append(data.delivery_city.strip())
+        if data.delivery_state and data.delivery_state.strip():
+            delivery_parts.append(data.delivery_state.strip())
+        if data.delivery_pincode and data.delivery_pincode.strip():
+            delivery_parts.append(data.delivery_pincode.strip())
+        delivery_address = ", ".join(delivery_parts) + ", India" if delivery_parts else "India"
+
+        # Geocode
         pickup_coords = geocode(pickup_address)
         delivery_coords = geocode(delivery_address)
 
@@ -82,6 +99,8 @@ def create_order(
             distance_km = road_distance(*pickup_coords, *delivery_coords)
 
         distance_charge = round(distance_km * 2.0, 2)
+
+        # Additive formula: weight_charge + distance_charge
         delivery_charge = weight_charge + distance_charge
     else:
         # Non-produce
